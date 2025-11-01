@@ -1,0 +1,38 @@
+name: "AI Code Review Bot"
+description: "Rulează revizuirea automată a codului bazată pe LLM pentru un Pull Request."
+
+inputs:
+  github-token:
+    description: "GitHub Token (necesar pentru a posta comentarii)."
+    required: true
+  pr-number:
+    description: "Numărul Pull Request-ului de revizuit. Preluat automat dacă nu este specificat."
+    required: false
+    default: ${{ github.event.issue.number || github.event.pull_request.number }}
+  ollama-api-url:
+    description: "URL-ul către serviciul Ollama LLM."
+    required: false
+    default: "http://localhost:11434"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
+    - name: Set up Node.js Environment
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+    - name: Install Dependencies
+      shell: bash
+      run: npm install
+    - name: Run AI Review Script
+      shell: bash
+      env:
+        PR_NUMBER: ${{ inputs.pr-number }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        OLLAMA_API_URL: ${{ inputs.ollama-api-url }}
+      run: node review.js
