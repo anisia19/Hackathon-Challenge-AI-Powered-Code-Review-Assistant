@@ -1,4 +1,4 @@
-const { getDiff, postComment } = require('./utils');
+const { getDiff, postComment } = require('../utils');
 const { checkOllamaService } = require('./modelLoader');
 const lintingPlugin = require('../plugins/linting');
 

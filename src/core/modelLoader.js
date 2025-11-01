@@ -12,7 +12,8 @@ async function checkOllamaService(ollamaApiUrl, modelName) {
         console.log(` Ollama service is reachable. Using model: ${modelName}`);
         return true;
     } catch (error) {
-        if (error.code === 'ECONNREFUSED' || error.response.status === 404) {
+        // Checking for connection errors or explicit 404 (not found)
+        if (error.code === 'ECONNREFUSED' || (error.response && error.response.status === 404)) {
             console.error(`ERROR: Could not connect to Ollama at ${ollamaApiUrl}.`);
             console.error("Please ensure Ollama is running and accessible on the network where the CI job executes.");
         } else {
