@@ -4,7 +4,6 @@ async function analyzeJsDiff(file) {
     console.log(`  -> Running specialized JS analysis for ${file.filename}`);
 
     const systemInstruction = `You are a Senior JavaScript Architect focused on code quality, performance, and modern language standards (ES2023+). Analyze the provided diff exclusively for potential bugs, poor patterns, immutability violations, and efficiency issues. Respond ONLY with a markdown summary of the most critical issue and a concise recommendation, or respond with a single word "CLEAN" if no issues are found.`;
-    // In a real app, we might feed the surrounding context code as well, but for now, the diff is enough.
     const userQuery = `Review the following code diff for potential issues in ${file.filename}:\n\n${file.diff}`;
 
     const reviewResult = await generateReview(systemInstruction, userQuery);
@@ -13,7 +12,6 @@ async function analyzeJsDiff(file) {
         return null;
     }
 
-    // Format the response specifically for this file
     const fileSummary = `## Review for \`${file.filename}\` (JavaScript)\n\n${reviewResult}\n\n---\n`;
     return fileSummary;
 }

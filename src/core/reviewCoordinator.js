@@ -37,7 +37,6 @@ async function runReview(githubToken, prNumber, srcRoot) {
 
         // 2. Extragere Diff
         console.log("1. Fetching raw diff content and parsing files...");
-        // Presupunând că getDiff are nevoie de githubToken
         const filesToReview = await getDiff(prNumber, githubToken);
 
         if (filesToReview.length === 0) {
@@ -57,16 +56,12 @@ async function runReview(githubToken, prNumber, srcRoot) {
         // 3. Rulare Plugin Static
         console.log("2. Running linting plugin...");
         const lintingOutput = await lintingPlugin.run(filesToReview);
-
-        // 4. RULAREA LLM PENTRU RECENZIE (APEL NOU)
         console.log("3. Calling Ollama for AI Code Review...");
         const aiReviewOutput = await runOllamaReview(
             filesToReview,
             ollamaApiUrl,
             ollamaModel
         );
-
-        // 5. Combinarea și Postarea Comentariului
         const combinedCommentBody = `## 🤖 AI Code Review (Model: ${ollamaModel}) 🚀\n\n` +
             `${aiReviewOutput}\n\n` +
             `---\n` +
