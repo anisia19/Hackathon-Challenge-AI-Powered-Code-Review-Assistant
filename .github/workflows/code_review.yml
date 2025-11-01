@@ -1,6 +1,6 @@
 name: Local AI Code Review Test
 
-# Rulează pe evenimentul pull_request deschis, sincronizat sau re-deschis
+# Triggered on pull requests (opened, updated, or reopened)
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -9,33 +9,37 @@ jobs:
   ai_review_test:
     runs-on: ubuntu-latest
 
-    # Configurăm serviciul Ollama ca un container sidecar
+    # Configure Ollama as a sidecar container service
     services:
       ollama:
         image: ollama/ollama
         ports:
           - 11434:11434
-        # Așteptăm ca Ollama să pornească
-        options: >
-          --health-cmd "ollama --version" 
-          --health-interval 10s 
-          --health-timeout 5s 
+        # Wait for Ollama to start before proceeding
+        options: >-
+          --health-cmd "ollama --version"
+          --health-interval 10s
+          --health-timeout 5s
           --health-retries 10
 
     steps:
+      - name: Checkout Repository Code
+        # Essential: Fetch repo files on the runner, including action.yml
+        uses: actions/checkout@v4
+
       - name: Wait for Ollama Service
-        # Adăugăm un pas simplu pentru a aștepta serviciul Ollama, asigurând că pornește.
+        # Simple delay to ensure Ollama container has fully started
         run: echo "Ollama service is starting..." && sleep 15s
 
       - name: Run AI Code Review Action
-        # Aceasta este cheia: apelăm acțiunea definită local în acest depozit.
-        # Sintaxa './' înseamnă "folosește fișierul action.yml din rădăcina acestui repo".
+        # Run your local GitHub Action (action.yml in this repo)
         uses: ./
         with:
-          # TOKEN-ul este furnizat automat de GitHub
+          # GitHub automatically provides this token
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-          # URL-ul se adresează containerului sidecar Ollama
+          # URL for the Ollama sidecar container
           ollama-api-url: "http://ollama:11434"
 
-          # pr-number este preluat automat
+          # The PR number will be automatically injected by GitHub Actions
+          # (no need to specify it manually)
