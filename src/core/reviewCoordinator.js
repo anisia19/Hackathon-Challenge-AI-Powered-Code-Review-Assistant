@@ -1,33 +1,67 @@
 const { getDiff, postComment } = require('./utils');
+const { checkOllamaService } = require('./modelLoader');
+const lintingPlugin = require('../plugins/linting');
 
-const { lintingPlugin } = require('../plugins/linting/index');
-async function runReview(githubToken, prNumber, srcRoot) {
-    console.log("1. Fetching raw diff content...");
-    const rawDiff = getDiff(prNumber);
-    const changedFiles = [
-        { filename: 'app/utils.js', language: 'javascript', diff: rawDiff }
-    ];
+// Constants for LLM setup
+const DEFAULT_OLLAMA_API_URL = 'http://localhost:11434';
+const DEFAULT_OLLAMA_MODEL = 'codellama:7b';
+const PR_NUMBER = process.env.PR_NUMBER;
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
-    let fullReviewText = `# Automated AI Code Review (Draft)\n\n`;
-    let issuesDetected = 0;
-
-    for (const file of changedFiles) {
-        console.log(`2. Running linting plugin for ${file.filename} (${file.language})...`);
-
-        const fileReview = await lintingPlugin.run(file);
-
-        if (fileReview) {
-            fullReviewText += fileReview;
-            issuesDetected++;
+/**
+ * The main execution flow for the automated code review system.
+ */
+async function run() {
+    try {
+        if (!PR_NUMBER || !GITHUB_TOKEN) {
+            console.error("CRITICAL ERROR: PR_NUMBER or GITHUB_TOKEN environment variables are missing.");
+            console.error("Please ensure these are set in your GitHub Actions workflow or local environment.");
+            return;
         }
-    }
 
-    if (issuesDetected === 0) {
-        fullReviewText += "### Code Quality Status: Excellent\n\nNo significant architectural or stylistic issues were detected in the changes. Looks great! (Powered by LLM mock.)";
-    }
+        console.log(`Starting AI Code Review for PR #${PR_NUMBER}...`);
 
-    console.log("3. Posting review comment to GitHub...");
-    await postComment(prNumber, githubToken, fullReviewText);
+        // --- 1. LLM Health Check ---
+        const ollamaApiUrl = process.env.OLLAMA_API_URL || DEFAULT_OLLAMA_API_URL;
+        const ollamaModel = process.env.OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL;
+
+        const isOllamaReady = await checkOllamaService(ollamaApiUrl, ollamaModel);
+
+        if (!isOllamaReady) {
+            console.error(`\nReview aborted because the Ollama service check failed.`);
+            // Post a generic error comment to the PR to notify the developer
+            await postComment(PR_NUMBER, GITHUB_TOKEN,
+                "## ❌ Automated Review Failed: LLM Connection\n\n" +
+                "The code review bot could not connect to the local LLM service " +
+                "(`Ollama`). Please check the service status."
+            );
+            return; // Exit cleanly
+        }
+
+        // --- 2. Diff Generation (currently mocked) ---
+        console.log("1. Fetching raw diff content...");
+        const rawDiff = getDiff(PR_NUMBER);
+
+        // --- 3. Run Plugins (LLM Analysis) ---
+        console.log("2. Running linting plugin...");
+        // In the future, this will be an array of parsed changes
+        const filesToReview = [{ filename: 'app/utils.js', diff: rawDiff, language: 'javascript' }];
+
+        // We run the LLM analysis via the linting plugin
+        const reviewCommentBody = await lintingPlugin.run(filesToReview);
+
+        // --- 4. Posting Feedback (currently mocked) ---
+        console.log("3. Posting review comment to GitHub...");
+        await postComment(PR_NUMBER, GITHUB_TOKEN, reviewCommentBody);
+
+        console.log("Review complete. Comment posted to the Pull Request.");
+
+    } catch (error) {
+        console.error("An unhandled error occurred during the review process:", error);
+    }
 }
 
-module.exports = { runReview };
+// Ensure the module is directly runnable
+run();
+
+module.exports = { run };

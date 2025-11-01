@@ -1,45 +1,107 @@
 const axios = require('axios');
+const { exec } = require('child_process/promises');
 
 const MOCK_OWNER = 'repo-owner';
 const MOCK_REPO = 'ai-code-reviewer';
 
-function getDiff(prNumber) {
-    console.log(`Mocking GitHub API call to fetch diff for PR #${prNumber}.`);
-    const mockDiff = `
-diff --git a/app/utils.js b/app/utils.js
-index 9b71e1d..6c0245a 100644
---- a/app/utils.js
-+++ b/app/utils.js
-@@ -1,5 +1,8 @@
- function calculateSum(a, b) {
-     return a + b;
- }
--function processData(data, newItem) {
--    data.push(newItem);
--    return data;
-+function processData(data, newItem, factor) {
-+    // Intentional mutation to test LLM mock analysis
-+    if (factor > 10) {
-+        data.push(newItem); // This line is the issue the LLM will find
-+    }
-+    return data;
+function getLanguageFromFilename(filename) {
+    if (filename.endsWith('.js') || filename.endsWith('.jsx') || filename.endsWith('.ts') || filename.endsWith('.tsx')) {
+        return 'javascript';
+    }
+    if (filename.endsWith('.py')) {
+        return 'python';
+    }
+    // Add more languages as we expand
+    return null;
 }
- module.exports = { calculateSum, processData };
-`;
-    return mockDiff.trim();
+
+
+async function getRawDiff() {
+    try {
+        const { stdout } = await exec('git diff --no-color HEAD^1 HEAD');
+        console.log("Git diff executed successfully.");
+        return stdout;
+    } catch (error) {
+        console.error("Failed to execute git diff command:", error.message);
+        throw new Error("Could not retrieve code diff. Ensure fetch-depth: 0 is used in actions/checkout@v4.");
+    }
+}
+
+function parseDiff(rawDiff) {
+
+    const fileChunks = rawDiff.split(/(?=^diff --git)/m);
+    const filesToReview = [];
+
+    for (const chunk of fileChunks) {
+        if (!chunk.trim()) continue;
+        const filenameMatch = chunk.match(/\+\+\+ b\/(.+)\n/);
+        if (!filenameMatch) continue;
+
+        const filename = filenameMatch[1].trim();
+        const language = getLanguageFromFilename(filename);
+        if (language && !filename.startsWith('package-lock.json') && !filename.startsWith('yarn.lock')) {
+            filesToReview.push({
+                filename: filename,
+                diff: chunk,
+                language: language
+            });
+        }
+    }
+
+    console.log(`Found ${filesToReview.length} file(s) to review after filtering.`);
+    return filesToReview;
+}
+
+async function getDiff(prNumber) {
+    const rawDiffText = await getRawDiff();
+    return parseDiff(rawDiffText);
 }
 
 async function postComment(prNumber, token, body) {
-    const commentUrl = `https://api.github.com/repos/${MOCK_OWNER}/${MOCK_REPO}/issues/${prNumber}/comments`;
+    const githubRepository = process.env.GITHUB_REPOSITORY;
+    if (!githubRepository) {
+        console.error("CRITICAL: GITHUB_REPOSITORY environment variable is missing.");
+        throw new Error("Cannot post comment without repository context.");
+    }
 
-    console.log(`\n--- MOCK GITHUB COMMENT POSTED ---\n`);
-    console.log(`Target URL: ${commentUrl}`);
-    console.log(`Comment Body Preview (first 300 chars):`);
-    console.log("---------------------------------------");
-    console.log(body.substring(0, 300) + '...');
-    console.log("---------------------------------------");
+    const [owner, repo] = githubRepository.split('/');
+    const commentUrl = `https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/comments`;
 
-    return Promise.resolve({ status: 201, message: "Mock comment created" });
+    const maxRetries = 3;
+    let lastError;
+
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            console.log(`Attempting to post comment to PR #${prNumber} (Attempt ${i + 1}/${maxRetries})...`);
+
+            const response = await axios.post(commentUrl, { body }, {
+                headers: {
+                    // Token authentication
+                    'Authorization': `token ${token}`,
+                    // Required for GitHub API V3
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            console.log(`GitHub comment posted successfully! Status: ${response.status}`);
+            return response.data;
+
+        } catch (error) {
+            lastError = error;
+            const status = error.response ? error.response.status : 'Network Error';
+            console.warn(`Failed to post comment (Status: ${status}). Retrying in ${2 ** i}s...`);
+
+            if (i < maxRetries - 1) {
+                // Exponential backoff: 1s, 2s, 4s, ...
+                await new Promise(resolve => setTimeout(resolve, (2 ** i) * 1000));
+            }
+        }
+    }
+
+    // If all retries fail
+    console.error("All retries failed. Could not post comment to GitHub.");
+    throw lastError;
 }
 
 module.exports = { getDiff, postComment };
