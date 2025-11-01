@@ -13,7 +13,6 @@ console.log(`Starting AI Code Review for PR #${PR_NUMBER}...`);
 
 runReview(GITHUB_TOKEN, PR_NUMBER, SRC_ROOT)
     .then(() => {
-        a
         console.log("Review complete. Comment posted to the Pull Request.");
     })
     .catch(error => {

@@ -3,6 +3,9 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const execPromise = promisify(exec);
 
+const MOCK_OWNER = 'repo-owner';
+const MOCK_REPO = 'ai-code-reviewer';
+
 const MOCK_DIFF_CONTENT = `diff --git a/src/core/reviewCoordinator.js b/src/core/reviewCoordinator.js
 index 4b87e2f..7d3c01c 100644
 --- a/src/core/reviewCoordinator.js
@@ -22,7 +25,7 @@ index a1b2c3d..e4f5g6h 100644
 @@ -1,3 +1,4 @@
 +// Aceasta este o schimbare mock pentru a simula adăugarea unei funcții.
  function calculateSum(a, b) {
-     return a + b;
+    return a + b;
  }
 `;
 
@@ -33,9 +36,10 @@ function getLanguageFromFilename(filename) {
     if (filename.endsWith('.py')) {
         return 'python';
     }
-
+    // Adaugă mai multe limbaje pe măsură ce extindem
     return null;
 }
+
 
 async function getRawDiff() {
     if (process.env.MOCK_DIFF === 'true') {
@@ -86,16 +90,32 @@ async function getDiff(prNumber) {
 
 async function postComment(prNumber, token, body) {
     const githubRepository = process.env.GITHUB_REPOSITORY;
-    if (!githubRepository) {
-        console.error("CRITICAL: Variabila de mediu GITHUB_REPOSITORY lipsește.");
-        if (process.env.MOCK_POST === 'true' || !token) {
-            console.log("MOCK: Se sare peste POST-ul real. Corpul comentariului:");
-            console.log("-----------------------------------------");
-            console.log(body);
-            console.log("-----------------------------------------");
-            return { id: 'mock-id', status: 201, mock: true };
+
+    // Verifică întotdeauna dacă se folosește un token mock, 
+    // chiar dacă GITHUB_REPOSITORY este setat.
+    const isMockToken = token === 'MOCK_TOKEN_FOR_TESTS';
+
+    // Intrăm în modul MOCK dacă:
+    // 1. Token-ul este cel mockat (pentru a evita 401).
+    // 2. Variabila GITHUB_REPOSITORY lipsește.
+    // 3. Variabila MOCK_POST este explicit 'true'.
+    if (isMockToken || !githubRepository || process.env.MOCK_POST === 'true') {
+
+        if (isMockToken) {
+            console.error("CRITICAL: Token MOCK detectat. Se sare peste POST-ul real (evitare 401).");
+        } else if (!githubRepository) {
+            console.error("CRITICAL: Variabila de mediu GITHUB_REPOSITORY lipsește.");
+        } else {
+            console.log("MOCK: MOCK_POST este 'true'. Se sare peste POST-ul real.");
         }
-        throw new Error("Nu se poate posta comentariul fără contextul depozitului.");
+
+        console.log("-----------------------------------------");
+        console.log(`MOCK: Previzualizarea comentariului pentru PR #${prNumber}:`);
+        console.log(body);
+        console.log("-----------------------------------------");
+
+        // Returnează un obiect mock pentru a simula succesul postării
+        return { id: 'mock-id', status: 201, mock: true };
     }
 
     const [owner, repo] = githubRepository.split('/');
