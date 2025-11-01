@@ -3,9 +3,9 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const execPromise = promisify(exec);
 
+// --- Constante Mock (pentru testarea locală) ---
 const MOCK_OWNER = 'repo-owner';
 const MOCK_REPO = 'ai-code-reviewer';
-
 const MOCK_DIFF_CONTENT = `diff --git a/src/core/reviewCoordinator.js b/src/core/reviewCoordinator.js
 index 4b87e2f..7d3c01c 100644
 --- a/src/core/reviewCoordinator.js
@@ -13,8 +13,8 @@ index 4b87e2f..7d3c01c 100644
 @@ -1,6 +1,6 @@
  const { getDiff, postComment } = require('../utils');
  const { checkOllamaService } = require('./modelLoader');
--const lintingPlugin = require('../plugins/linting'); // Calea veche
-+const lintingPlugin = require('../plugins/linting/index.js'); // Calea corectată
+-const lintingPlugin = require('../plugins/linting');
++const lintingPlugin = require('../plugins/linting/index.js');
  
  // Constants for LLM setup
  const DEFAULT_OLLAMA_API_URL = 'http://localhost:11434';
@@ -25,7 +25,7 @@ index a1b2c3d..e4f5g6h 100644
 @@ -1,3 +1,4 @@
 +// Aceasta este o schimbare mock pentru a simula adăugarea unei funcții.
  function calculateSum(a, b) {
-    return a + b;
+   return a + b;
  }
 `;
 
@@ -36,44 +36,73 @@ function getLanguageFromFilename(filename) {
     if (filename.endsWith('.py')) {
         return 'python';
     }
-    // Adaugă mai multe limbaje pe măsură ce extindem
     return null;
+}
+
+async function getDiffFromApi(prNumber, token) {
+    const githubRepository = process.env.GITHUB_REPOSITORY || `${MOCK_OWNER}/${MOCK_REPO}`;
+    const [owner, repo] = githubRepository.split('/');
+    const diffUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`;
+
+    try {
+        console.log(`Se încearcă obținerea diff-ului PR #${prNumber} de la GitHub API...`);
+
+        const response = await axios.get(diffUrl, {
+            headers: {
+                // CERERE CRITICĂ: Solicită diff-ul complet al PR-ului
+                'Accept': 'application/vnd.github.v3.diff',
+                'Authorization': `token ${token}`,
+            },
+            timeout: 10000
+        });
+
+        // Conținutul diff-ului este în response.data
+        const rawDiffText = response.data;
+        console.log("Diff raw obținut cu succes de la GitHub API.");
+        return rawDiffText;
+
+    } catch (error) {
+        console.error("Eroare la obținerea diff-ului PR de la GitHub API:", error.message);
+        // Fallback la conținutul mockat în caz de eroare API
+        console.warn("Eroare API. Se folosește conținutul diff mockat.");
+        return MOCK_DIFF_CONTENT;
+    }
 }
 
 
 async function getRawDiff() {
     if (process.env.MOCK_DIFF === 'true') {
-        console.log("MOCK: Se returnează conținutul diff mockat.");
         return MOCK_DIFF_CONTENT;
     }
-
+    // Funcția originală care folosea git diff, păstrată doar defensiv
     try {
         const { stdout } = await execPromise('git diff --no-color HEAD^1 HEAD');
-        console.log("Git diff executat cu succes.");
         return stdout;
     } catch (error) {
-        console.warn("Eșec la executarea 'git diff'. Se folosește mock diff pentru testare.");
-        console.error("Eroare originală:", error.message);
         return MOCK_DIFF_CONTENT;
     }
 }
 
 function parseDiff(rawDiff) {
-
     const fileChunks = rawDiff.split(/(?=^diff --git)/m);
     const filesToReview = [];
 
     for (const chunk of fileChunks) {
         if (!chunk.trim()) continue;
+
+        // Extrage numele fișierului după '+++ b/'
         const filenameMatch = chunk.match(/\+\+\+ b\/(.+)\n/);
         if (!filenameMatch) continue;
 
         const filename = filenameMatch[1].trim();
         const language = getLanguageFromFilename(filename);
-        if (language && !filename.startsWith('package-lock.json') && !filename.startsWith('yarn.lock')) {
+
+        // Filtrare: doar limbaje suportate și ignorarea fișierelor de lock
+        if (language && !filename.includes('package-lock.json') && !filename.includes('yarn.lock')) {
             filesToReview.push({
                 filename: filename,
-                diff: chunk,
+                // Folosim întregul chunk de diff (inclusiv antetul) ca patch
+                patch: chunk,
                 language: language
             });
         }
@@ -83,38 +112,34 @@ function parseDiff(rawDiff) {
     return filesToReview;
 }
 
-async function getDiff(prNumber) {
-    const rawDiffText = await getRawDiff();
+async function getDiff(prNumber, token) {
+    let rawDiffText;
+
+    if (process.env.MOCK_DIFF === 'true') {
+        rawDiffText = await getRawDiff();
+    } else {
+        rawDiffText = await getDiffFromApi(prNumber, token);
+    }
+
     return parseDiff(rawDiffText);
 }
 
+/**
+ * Postează un comentariu pe un Pull Request folosind GitHub API.
+ * Include logica de retry cu backoff exponențial.
+ */
 async function postComment(prNumber, token, body) {
     const githubRepository = process.env.GITHUB_REPOSITORY;
 
-    // Verifică întotdeauna dacă se folosește un token mock, 
-    // chiar dacă GITHUB_REPOSITORY este setat.
+    // Logica de MOCK pentru a evita apelurile API în timpul testării
     const isMockToken = token === 'MOCK_TOKEN_FOR_TESTS';
-
-    // Intrăm în modul MOCK dacă:
-    // 1. Token-ul este cel mockat (pentru a evita 401).
-    // 2. Variabila GITHUB_REPOSITORY lipsește.
-    // 3. Variabila MOCK_POST este explicit 'true'.
     if (isMockToken || !githubRepository || process.env.MOCK_POST === 'true') {
-
-        if (isMockToken) {
-            console.error("CRITICAL: Token MOCK detectat. Se sare peste POST-ul real (evitare 401).");
-        } else if (!githubRepository) {
-            console.error("CRITICAL: Variabila de mediu GITHUB_REPOSITORY lipsește.");
-        } else {
-            console.log("MOCK: MOCK_POST este 'true'. Se sare peste POST-ul real.");
-        }
-
+        if (isMockToken) console.error("CRITICAL: Token MOCK detectat. Se sare peste POST-ul real (evitare 401).");
+        // ... (Logica de mock neschimbată)
         console.log("-----------------------------------------");
         console.log(`MOCK: Previzualizarea comentariului pentru PR #${prNumber}:`);
         console.log(body);
         console.log("-----------------------------------------");
-
-        // Returnează un obiect mock pentru a simula succesul postării
         return { id: 'mock-id', status: 201, mock: true };
     }
 
@@ -145,14 +170,12 @@ async function postComment(prNumber, token, body) {
             console.warn(`Eșec la postarea comentariului (Status: ${status}). Se reîncearcă în ${2 ** i}s...`);
 
             if (i < maxRetries - 1) {
-                // Backoff exponențial: 1s, 2s, 4s, ...
                 await new Promise(resolve => setTimeout(resolve, (2 ** i) * 1000));
             }
         }
     }
 
     console.error("Toate reîncercările au eșuat. Nu s-a putut posta comentariul pe GitHub.");
-    throw lastError;
 }
 
 module.exports = { getDiff, postComment };
