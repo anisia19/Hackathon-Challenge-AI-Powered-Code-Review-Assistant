@@ -1,33 +1,41 @@
-name: Automated Code Review
+name: Local AI Code Review Test
 
+# Rulează pe evenimentul pull_request deschis, sincronizat sau re-deschis
 on:
   pull_request:
-    types: [opened, reopened, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
-  ai_review:
+  ai_review_test:
     runs-on: ubuntu-latest
+
+    # Configurăm serviciul Ollama ca un container sidecar
+    services:
+      ollama:
+        image: ollama/ollama
+        ports:
+          - 11434:11434
+        # Așteptăm ca Ollama să pornească
+        options: >
+          --health-cmd "ollama --version" 
+          --health-interval 10s 
+          --health-timeout 5s 
+          --health-retries 10
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        # Fetch the base branch too, needed for accurate diffing
+      - name: Wait for Ollama Service
+        # Adăugăm un pas simplu pentru a aștepta serviciul Ollama, asigurând că pornește.
+        run: echo "Ollama service is starting..." && sleep 15s
+
+      - name: Run AI Code Review Action
+        # Aceasta este cheia: apelăm acțiunea definită local în acest depozit.
+        # Sintaxa './' înseamnă "folosește fișierul action.yml din rădăcina acestui repo".
+        uses: ./
         with:
-          fetch-depth: 0
+          # TOKEN-ul este furnizat automat de GitHub
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+          # URL-ul se adresează containerului sidecar Ollama
+          ollama-api-url: "http://ollama:11434"
 
-      - name: Install Dependencies
-        run: npm install
-
-      - name: Run AI Code Review
-        run: node review.js
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Use http://host.docker.internal:11434 if running Ollama in Docker
-          # or a specific IP if running on a separate machine/service.
-          OLLAMA_API_URL: ${{ vars.OLLAMA_API_URL || 'http://localhost:11434' }}
-          OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL || 'codellama:7b' }}
+          # pr-number este preluat automat
