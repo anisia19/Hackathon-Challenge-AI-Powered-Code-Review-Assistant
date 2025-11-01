@@ -1,7 +1,5 @@
-// Main entry point for the GitHub Action
 const { runReview } = require('./src/core/reviewCoordinator');
 
-// Read the necessary environment variables from the GitHub Actions context
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const PR_NUMBER = process.env.PR_NUMBER;
 const SRC_ROOT = process.env.SRC_ROOT; // 'src'
