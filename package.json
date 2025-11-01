@@ -1,0 +1,12 @@
+{
+    "name": "ai-code-reviewer",
+    "version": "1.0.0",
+    "description": "Automated code review system powered by local LLMs.",
+    "main": "review.js",
+    "scripts": {
+        "start": "node review.js"
+    },
+    "dependencies": {
+        "axios": "^1.6.8"
+    }
+}
