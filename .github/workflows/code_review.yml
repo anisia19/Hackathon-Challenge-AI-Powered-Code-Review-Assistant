@@ -1,6 +1,4 @@
 name: Local AI Code Review Test
-
-# Triggered on pull requests (opened, updated, or reopened)
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -8,14 +6,13 @@ on:
 jobs:
   ai_review_test:
     runs-on: ubuntu-latest
-
-    # Configure Ollama as a sidecar container service
+    permissions:
+      issues: write
     services:
       ollama:
         image: ollama/ollama
         ports:
           - 11434:11434
-        # Wait for Ollama to start before proceeding
         options: >-
           --health-cmd "ollama --version"
           --health-interval 10s
@@ -24,22 +21,14 @@ jobs:
 
     steps:
       - name: Checkout Repository Code
-        # Essential: Fetch repo files on the runner, including action.yml
         uses: actions/checkout@v4
 
       - name: Wait for Ollama Service
-        # Simple delay to ensure Ollama container has fully started
-        run: echo "Ollama service is starting..." && sleep 15s
+        run: echo "Ollama service is ready..." && sleep 5s
 
       - name: Run AI Code Review Action
-        # Run your local GitHub Action (action.yml in this repo)
         uses: ./
         with:
-          # GitHub automatically provides this token
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-          # URL for the Ollama sidecar container
           ollama-api-url: "http://ollama:11434"
-
-          # The PR number will be automatically injected by GitHub Actions
-          # (no need to specify it manually)
+          pr-number: ${{ github.event.pull_request.number }}
