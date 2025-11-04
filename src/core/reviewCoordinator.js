@@ -1,6 +1,3 @@
-// reviewCoordinator.js (Versiune Finală & Corectată)
-
-//  SCHIMBARE AICI: Importăm runOllamaReview din modelLoader
 const { getDiff, postComment } = require('../utils');
 const { checkOllamaService, runOllamaReview } = require('./modelLoader');
 const lintingPlugin = require('../plugins/linting/index.js');
@@ -19,8 +16,6 @@ async function runReview(githubToken, prNumber, srcRoot) {
         console.log(`Starting AI Code Review for PR #${prNumber} (SRC_ROOT: ${srcRoot})...`);
         const ollamaApiUrl = process.env.OLLAMA_API_URL || DEFAULT_OLLAMA_API_URL;
         const ollamaModel = process.env.OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL;
-
-        // 1. Verificare Ollama
         const isOllamaReady = await checkOllamaService(ollamaApiUrl, ollamaModel);
 
         if (!isOllamaReady) {
@@ -35,9 +30,8 @@ async function runReview(githubToken, prNumber, srcRoot) {
             return;
         }
 
-        // 2. Extragere Diff
+
         console.log("1. Fetching raw diff content and parsing files...");
-        // Presupunând că getDiff are nevoie de githubToken
         const filesToReview = await getDiff(prNumber, githubToken);
 
         if (filesToReview.length === 0) {
@@ -54,19 +48,14 @@ async function runReview(githubToken, prNumber, srcRoot) {
 
         console.log(`Found ${filesToReview.length} file(s) to process.`);
 
-        // 3. Rulare Plugin Static
         console.log("2. Running linting plugin...");
         const lintingOutput = await lintingPlugin.run(filesToReview);
-
-        // 4. RULAREA LLM PENTRU RECENZIE (APEL NOU)
         console.log("3. Calling Ollama for AI Code Review...");
         const aiReviewOutput = await runOllamaReview(
             filesToReview,
             ollamaApiUrl,
             ollamaModel
         );
-
-        // 5. Combinarea și Postarea Comentariului
         const combinedCommentBody = `## 🤖 AI Code Review (Model: ${ollamaModel}) 🚀\n\n` +
             `${aiReviewOutput}\n\n` +
             `---\n` +
@@ -78,7 +67,6 @@ async function runReview(githubToken, prNumber, srcRoot) {
         console.log("Review complete. Comment posted to the Pull Request.");
 
     } catch (error) {
-        // Logica de eroare pentru cazurile neprevăzute
         console.error("An unhandled error occurred during the review process:", error);
 
         try {
