@@ -3,7 +3,6 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const execPromise = promisify(exec);
 
-// --- Constante Mock (pentru testarea locală) ---
 const MOCK_OWNER = 'repo-owner';
 const MOCK_REPO = 'ai-code-reviewer';
 const MOCK_DIFF_CONTENT = `diff --git a/src/core/reviewCoordinator.js b/src/core/reviewCoordinator.js
@@ -49,21 +48,18 @@ async function getDiffFromApi(prNumber, token) {
 
         const response = await axios.get(diffUrl, {
             headers: {
-                // CERERE CRITICĂ: Solicită diff-ul complet al PR-ului
                 'Accept': 'application/vnd.github.v3.diff',
                 'Authorization': `token ${token}`,
             },
             timeout: 10000
         });
 
-        // Conținutul diff-ului este în response.data
         const rawDiffText = response.data;
         console.log("Diff raw obținut cu succes de la GitHub API.");
         return rawDiffText;
 
     } catch (error) {
         console.error("Eroare la obținerea diff-ului PR de la GitHub API:", error.message);
-        // Fallback la conținutul mockat în caz de eroare API
         console.warn("Eroare API. Se folosește conținutul diff mockat.");
         return MOCK_DIFF_CONTENT;
     }
@@ -74,7 +70,6 @@ async function getRawDiff() {
     if (process.env.MOCK_DIFF === 'true') {
         return MOCK_DIFF_CONTENT;
     }
-    // Funcția originală care folosea git diff, păstrată doar defensiv
     try {
         const { stdout } = await execPromise('git diff --no-color HEAD^1 HEAD');
         return stdout;
@@ -90,18 +85,15 @@ function parseDiff(rawDiff) {
     for (const chunk of fileChunks) {
         if (!chunk.trim()) continue;
 
-        // Extrage numele fișierului după '+++ b/'
         const filenameMatch = chunk.match(/\+\+\+ b\/(.+)\n/);
         if (!filenameMatch) continue;
 
         const filename = filenameMatch[1].trim();
         const language = getLanguageFromFilename(filename);
 
-        // Filtrare: doar limbaje suportate și ignorarea fișierelor de lock
         if (language && !filename.includes('package-lock.json') && !filename.includes('yarn.lock')) {
             filesToReview.push({
                 filename: filename,
-                // Folosim întregul chunk de diff (inclusiv antetul) ca patch
                 patch: chunk,
                 language: language
             });
@@ -124,18 +116,12 @@ async function getDiff(prNumber, token) {
     return parseDiff(rawDiffText);
 }
 
-/**
- * Postează un comentariu pe un Pull Request folosind GitHub API.
- * Include logica de retry cu backoff exponențial.
- */
 async function postComment(prNumber, token, body) {
     const githubRepository = process.env.GITHUB_REPOSITORY;
 
-    // Logica de MOCK pentru a evita apelurile API în timpul testării
     const isMockToken = token === 'MOCK_TOKEN_FOR_TESTS';
     if (isMockToken || !githubRepository || process.env.MOCK_POST === 'true') {
         if (isMockToken) console.error("CRITICAL: Token MOCK detectat. Se sare peste POST-ul real (evitare 401).");
-        // ... (Logica de mock neschimbată)
         console.log("-----------------------------------------");
         console.log(`MOCK: Previzualizarea comentariului pentru PR #${prNumber}:`);
         console.log(body);
