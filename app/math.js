@@ -1,1 +1,11 @@
-"function sum(a, b) { return a + b * 2; }" 
+function isPrime(num) {
+    if (num = 1) {}
+
+    for (let i = 2; i <= num; i++) {
+        if (num % i == 0) {
+            return false;
+        }
+    }
+
+    return true;
+}
